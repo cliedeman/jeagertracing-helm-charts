@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "jaeger-all-in-one.name" . }}
+  labels:
+    {{- include "jaeger-all-in-one.labels" . | nindent 4 }}
+    app.kubernetes.io/component: all-in-one
+{{- if .Values.annotations }}
+  annotations:
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "jaeger-all-in-one.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: all-in-one
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        checksum/config-env: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        {{- include "jaeger-all-in-one.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: all-in-one
+{{- if .Values.podLabels }}
+{{ toYaml .Values.podLabels | indent 8 }}
+{{- end }}
+    spec:
+      serviceAccountName: {{ template "jaeger-all-in-one.serviceAccountName" . }}
+      containers:
+      - name: {{ template "jaeger-all-in-one.name" . }}
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+          {{- range $key, $value := .Values.cmdlineParams }}
+          - name: {{ $key | replace "." "_" | replace "-" "_" | upper | quote }}
+            value: {{ $value | quote }}
+          {{- end }}
+          - name: SPAN_STORAGE_TYPE
+            value: "memory"
+          {{- if .Values.service.zipkinPort }}
+          - name: COLLECTOR_ZIPKIN_HTTP_PORT
+            value: {{ .Values.service.zipkinPort | quote }}
+          {{- end }}
+          {{- if .Values.samplingConfig}}
+          - name: SAMPLING_STRATEGIES_FILE
+            value: /etc/conf/strategies.json
+          {{- end }}
+          - name: JAEGER_AGENT_PORT
+            value: "6831"
+        ports:
+        - name: query
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        - containerPort: {{ .Values.service.grpcPort }}
+          name: grpc
+          protocol: TCP
+        - containerPort: {{ .Values.service.tchannelPort }}
+          name: tchannel
+          protocol: TCP
+        - containerPort: {{ .Values.service.httpPort }}
+          name: http
+          protocol: TCP
+        - containerPort: {{ .Values.service.compactPort }}
+          name: jaeger-compact
+          protocol: UDP
+        {{- if .Values.service.zipkinPort }}
+        - containerPort: {{ .Values.service.zipkinPort }}
+          name: zipkin
+          protocol: TCP
+        {{- end }}
+        readinessProbe:
+          httpGet:
+            path: /
+            port: query
+        livenessProbe:
+          httpGet:
+            path: /
+            port: query
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        volumeMounts:
+        {{- range .Values.extraConfigmapMounts }}
+          - name: {{ .name }}
+            mountPath: {{ .mountPath }}
+            subPath: {{ .subPath }}
+            readOnly: {{ .readOnly }}
+        {{- end }}
+        {{- range .Values.extraSecretMounts }}
+          - name: {{ .name }}
+            mountPath: {{ .mountPath }}
+            subPath: {{ .subPath }}
+            readOnly: {{ .readOnly }}
+        {{- end }}
+        {{- if .Values.samplingConfig}}
+          - name: strategies
+            mountPath: /etc/conf/
+        {{- end }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      restartPolicy: Always
+      volumes:
+      {{- range .Values.extraConfigmapMounts }}
+        - name: {{ .name }}
+          configMap:
+            name: {{ .configMap }}
+      {{- end }}
+      {{- range .Values.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+      {{- end }}
+      {{- if .Values.samplingConfig}}
+        - name: strategies
+          configMap:
+            name: {{ include "jaeger-all-in-one.fullname" . }}-sampling-strategies
+      {{- end }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "jaeger-all-in-one.name" . }}-agent
+  labels:
+    {{- include "jaeger-all-in-one.labels" . | nindent 4 }}
+    app.kubernetes.io/component: all-in-one
+{{- if .Values.service.annotations }}
+  annotations:
+{{ toYaml .Values.service.annotations | indent 4 }}
+{{- end }}
+spec:
+  ports:
+  - name: zipkin-compact
+    port: {{ .Values.service.zipkinThriftPort }}
+    protocol: UDP
+    targetPort: zipkin-compact
+  - name: jaeger-compact
+    port: {{ .Values.service.compactPort }}
+    protocol: UDP
+    targetPort: jaeger-compact
+  - name: jaeger-binary
+    port: {{ .Values.service.binaryPort }}
+    protocol: UDP
+    targetPort: jaeger-binary
+  - name: http
+    port: {{ .Values.service.samplingPort }}
+    protocol: TCP
+    targetPort: http
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "jaeger-all-in-one.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: all-in-one
+{{- template "loadBalancerSourceRanges" .Values }}

@@ -1,0 +1,13 @@
+{{- if .Values.samplingConfig }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "jaeger-all-in-one.fullname" . }}-sampling-strategies
+  labels:
+    {{- include "jaeger-all-in-one.labels" . | nindent 4 }}
+    app.kubernetes.io/component: all-in-one
+data:
+  strategies.json: |-
+{{ tpl .Values.samplingConfig . | indent 4 }}
+{{- end }}
+
